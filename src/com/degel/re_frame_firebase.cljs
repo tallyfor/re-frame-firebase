@@ -22,6 +22,9 @@
 ;;;                   :on-success #(prn "Write succeeded")
 ;;;                   :on-failure [:firebase-error]]}
 ;;;
+;;; :firebase/set is a synonym so as to be consistent with the :firestore fn's and the
+;;; underlying API.
+(re-frame/reg-fx :firebase/set database/write-effect)
 (re-frame/reg-fx :firebase/write database/write-effect)
 
 ;;; Update values to Firebase.
