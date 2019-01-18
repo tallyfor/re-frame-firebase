@@ -76,6 +76,7 @@
            (case event-type
              :firebase/write        (database/write-effect args)
              :firebase/update       (database/update-effect args)
+             :firebase/set          (database/write-effect args)
              :firebase/push         (database/push-effect args)
              :firebase/read-once    (database/once-effect args)
              :firestore/delete      (firestore/delete-effect args)
