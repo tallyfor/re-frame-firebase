@@ -1,0 +1,13 @@
+;; shadow-cljs configuration
+{:source-paths
+ ["src"]
+
+ :dependencies
+ [[re-frame "1.3.0-rc3"]
+  [com.degel/iron "0.4.0"]]
+
+ :builds
+ {:library
+  {:target :node-library
+   :output-to "out/re_frame_firebase.js"
+   :exports {:initializeApp com.degel.re-frame-firebase.core/initialize-app}}}}

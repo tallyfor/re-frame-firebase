@@ -90,25 +90,25 @@
 ;;;                   ,,,]}
 ;;;
 (re-frame/reg-fx
- :firebase/multi
- (fn [effects]
-   (run! (fn [[event-type args]]
-           (case event-type
-             :firebase/write        (database/write-effect args)
-             :firebase/update       (database/update-effect args)
-             :firebase/push         (database/push-effect args)
-             :firebase/transaction  (database/transaction-effect args)
-             :firebase/swap         (database/swap-effect args)
-             :firebase/read-once    (database/once-effect args)
-             :firestore/delete      (firestore/delete-effect args)
-             :firestore/set         (firestore/set-effect args)
-             :firestore/update      (firestore/update-effect args)
-             :firestore/add         (firestore/add-effect args)
-             :firestore/write-batch (firestore/write-batch-effect args)
-             :firestore/get         (firestore/get-effect args)
-             :firestore/on-snapshot (firestore/on-snapshot args)
-             (js/alert "Internal error: unknown firebase effect: " event-type " (" args ")")))
-         effects)))
+  :firebase/multi
+  (fn [effects]
+    (run! (fn [[event-type args]]
+            (case event-type
+              :firebase/write        (database/write-effect args)
+              :firebase/update       (database/update-effect args)
+              :firebase/push         (database/push-effect args)
+              :firebase/transaction  (database/transaction-effect args)
+              :firebase/swap         (database/swap-effect args)
+              :firebase/read-once    (database/once-effect args)
+              ;; :firestore/delete      (firestore/delete-effect args)
+              ;; :firestore/set         (firestore/set-effect args)
+              ;; :firestore/update      (firestore/update-effect args)
+              ;; :firestore/add         (firestore/add-effect args)
+              ;; :firestore/write-batch (firestore/write-batch-effect args)
+              ;; :firestore/get         (firestore/get-effect args)
+              ;; :firestore/on-snapshot (firestore/on-snapshot args)
+              (js/alert "Internal error: unknown firebase effect: " event-type " (" args ")")))
+          effects)))
 
 
 ;;; Watch a value in Firebase.
