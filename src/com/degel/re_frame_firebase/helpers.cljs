@@ -3,10 +3,11 @@
 
 (ns com.degel.re-frame-firebase.helpers
   (:require
-   [clojure.spec.alpha :as s]
-   [iron.re-utils :as re-utils]
-   [iron.utils :as utils]
-   [com.degel.re-frame-firebase.core :as core]))
+    [clojure.spec.alpha :as s]
+    [iron.re-utils :as re-utils]
+    [iron.utils :as utils]
+    [com.degel.re-frame-firebase.core :as core]
+    [fmnoise.flow :refer [Flow fail? then else]]))
 
 
 ;;; Helper functions that straddle the line between this library and Iron
@@ -20,25 +21,28 @@
       clojure.walk/keywordize-keys))
 
 
-(defn promise-wrapper [promise on-success on-failure]
+(defn promise-wrapper [promise on-success on-failure] ;; TODO always use then/else on this fn's return value!
   {:pre [(utils/validate (s/nilable :re-frame/vec-or-fn) on-success)
          (utils/validate (s/nilable :re-frame/vec-or-fn) on-failure)]}
-  (when on-success
-    (.then promise (re-utils/event->fn on-success)))
-  (if on-failure
-    (.catch promise (re-utils/event->fn on-failure))
-    (.catch promise (core/default-error-handler))))
+  (->> promise
+       (then (fn [promise]
+               #_(tap> {:promise-wrapper/promise promise})
+               (when on-success
+                 (.then promise (re-utils/event->fn on-success)))
+               (if on-failure
+                 (.catch promise (re-utils/event->fn on-failure))
+                 (.catch promise (core/default-error-handler)))))))
 
 (defn success-failure-wrapper [on-success on-failure]
-  {:pre [(utils/validate (s/nilable :re-frame/vec-or-fn) on-success)
-         (utils/validate (s/nilable :re-frame/vec-or-fn) on-failure)]
+  {:pre  [(utils/validate (s/nilable :re-frame/vec-or-fn) on-success)
+          (utils/validate (s/nilable :re-frame/vec-or-fn) on-failure)]
    :post (fn? %)}
   (let [on-success (and on-success (re-utils/event->fn on-success))
         on-failure (and on-failure (re-utils/event->fn on-failure))
-        wrapped-handler (fn 
+        wrapped-handler (fn
                           ([err] (cond (nil? err) (when on-success (on-success))
                                        on-failure (on-failure err)
-                                       :else      ((core/default-error-handler) err)))
+                                       :else ((core/default-error-handler) err)))
 
                           ;; I am unable to find in the Google Firebase documentation* a 2-arity
                           ;; callback for .set .update or .transaction that uses this wrapper. Yet, I've
@@ -54,7 +58,7 @@
                            (cond (nil? err) (when on-success (on-success other))
                                  on-failure (on-failure err other)
                                  :else ((core/default-error-handler) err)))
-                          
+
                           ;; onComplete invoked in :firebase/transaction and :firebase/swap accepts an
                           ;; error code, a boolean indicating committed status, and a snapshot of the
                           ;; data at that path.
