@@ -106,7 +106,11 @@
           ;;        (modulo some reflection hack), since we use the id as part of
           ;;        the callback closure.
           id path
-          callback #(>evt [::on-value-handler id (js->clj-tree %)])]
+          callback (fn [handler]
+                     (let [tree (js->clj-tree handler)]
+                       #_(tap> {:on-value-sub.callback/handler handler
+                                :on-value-sub.callback/tree    tree})
+                       (>evt [::on-value-handler id tree])))]
       (.on ref "value" callback (event->fn (or on-failure (core/default-error-handler))))
       (make-reaction
         (fn [] (get-in @app-db [::cache id] nil))
