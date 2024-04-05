@@ -100,7 +100,12 @@
   [opts]
   (oauth-sign-in (js/firebase.auth.OAuthProvider. "microsoft.com") opts))
 
-
+(defn ocid-xero-sign-in
+  [opts]
+  (let [provider (js/firebase.auth.OAuthProvider. "oidc.xero")]
+    (.addScope provider "profile")
+    (.addScope provider "email")
+    (oauth-sign-in provider opts)))
 
 (defn email-sign-in [{:keys [email password]}]
   (-> (js/firebase.auth)
