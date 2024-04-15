@@ -48,39 +48,75 @@
   {:popup (memfn signInWithPopup auth-provider)
    :redirect (memfn signInWithRedirect auth-provider)})
 
-(defn- maybe-link-with-credential
-  [pending-credential user-credential]
-  (when (and pending-credential user-credential)
-    (when-let [firebase-user (.-user user-credential)]
-      (-> firebase-user
-          (.linkWithCredential pending-credential)
-          (.catch (core/default-error-handler))))))
+(defn link-account-directly [provider]
+  (let [auth-instance (.auth js/firebase)  ; Correct invocation of the auth method
+        current-user (.-currentUser auth-instance)]  ; Get the current user from the auth instance
+    (if current-user
+      (-> (.linkWithPopup current-user provider)  ; Call linkWithPopup on the current user
+          (.then (fn [result]
+                   (let [credential (.-credential result)
+                         user (.-user result)]
+                     (js/console.log "Accounts linked successfully" {:user user :credential credential}))))
+          (.catch (fn [error]
+                    (js/console.log "Failed to link accounts" {:message (.-message error)}))))
+      (js/console.log "No current user logged in; cannot link accounts"))))
+
+
+
+
+(defn handle-account-exists-different-credential [error]
+  (let [credential (.-credential error)
+        provider-id (.-providerId credential)]
+    (js/console.log "Handling account-exists-with-different-credential error"
+                    {:credential-email (if credential (.-email credential) "No credential available")
+                     :provider-id provider-id})
+    ;; Assuming there's a UI element or function to prompt user to sign in with the original provider
+    (if (contains? #{"google.com" "oidc.xero"} provider-id)
+      (js/console.log "Provider is Google , MSFT or Xero" {:provider-id provider-id})
+      (js/console.log "Provider not supported for linking" {:provider-id provider-id}))))
+
 
 (defn- oauth-sign-in
   [auth-provider opts]
   (let [{:keys [sign-in-method scopes custom-parameters link-with-credential]
          :or {sign-in-method :redirect}} opts]
-
+    (js/console.log "auth-provider" auth-provider)
+    (js/console.log "link-with-credential" link-with-credential)
     (doseq [scope scopes]
       (.addScope auth-provider scope))
-
     (when custom-parameters
       (.setCustomParameters auth-provider (clj->js custom-parameters)))
-
     (if-let [sign-in (sign-in-fns sign-in-method)]
-      (-> (js/firebase.auth)
-          (sign-in auth-provider)
-          (.then (partial maybe-link-with-credential link-with-credential))
-          (.catch (core/default-error-handler)))
-      (>evt [(core/default-error-handler)
-             (js/Error. (str "Unsupported sign-in-method: " sign-in-method ". Either :redirect or :popup are supported."))]))))
+      (let [auth-instance (js/firebase.auth)]
+        (-> (sign-in auth-instance auth-provider)
+            (.then (fn [result]
+                     (js/console.log "Sign-in successful, result:" result)))
+            (.catch (fn [error]
+                      (js/console.log "Sign-in error" {:message (.-message error) :code (.-code error)})
+                      (if (= (.-code error) "auth/account-exists-with-different-credential")
+                        (handle-account-exists-different-credential error))
+                      (core/default-error-handler)))))
+      (js/console.error "Unsupported sign-in-method" sign-in-method))))
+
 
 (defn google-sign-in
   [opts]
-  ;; TODO: use Credential for mobile.
+  ;; TODO: use Credential for mobile. 
   (oauth-sign-in (js/firebase.auth.GoogleAuthProvider.) opts))
 
+(defn ocid-xero-sign-in
+  [opts]
+  (let [provider (js/firebase.auth.OAuthProvider. "oidc.xero")]
+    (.addScope provider "profile")
+    (.addScope provider "email")
+    (oauth-sign-in provider opts)))
 
+(defn link-xero-account
+  []
+  (let [provider (js/firebase.auth.OAuthProvider. "oidc.xero")]
+    (.addScope provider "profile")
+    (.addScope provider "email")
+    (link-account-directly provider)))
 (defn facebook-sign-in
   [opts]
   (oauth-sign-in (js/firebase.auth.FacebookAuthProvider.) opts))
@@ -99,13 +135,6 @@
 (defn microsoft-sign-in
   [opts]
   (oauth-sign-in (js/firebase.auth.OAuthProvider. "microsoft.com") opts))
-
-(defn ocid-xero-sign-in
-  [opts]
-  (let [provider (js/firebase.auth.OAuthProvider. "oidc.xero")]
-    (.addScope provider "profile")
-    (.addScope provider "email")
-    (oauth-sign-in provider opts)))
 
 (defn email-sign-in [{:keys [email password]}]
   (-> (js/firebase.auth)
