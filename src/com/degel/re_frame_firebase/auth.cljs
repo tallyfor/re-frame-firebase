@@ -48,55 +48,73 @@
   {:popup (memfn signInWithPopup auth-provider)
    :redirect (memfn signInWithRedirect auth-provider)})
 
-(defn link-account-directly [provider]
+(defn link-a-user-account [provider]
   (let [auth-instance (.auth js/firebase)  ; Correct invocation of the auth method
         current-user (.-currentUser auth-instance)]  ; Get the current user from the auth instance
     (if current-user
-      (-> (.linkWithPopup current-user provider)  ; Call linkWithPopup on the current user
+      (-> (.linkWithPopup current-user provider)
           (.then (fn [result]
                    (let [credential (.-credential result)
                          user (.-user result)]
-                     (js/console.log "Accounts linked successfully" {:user user :credential credential}))))
+                     (js/console.log "Accounts linked successfully" {:user user :credential credential})
+                     {:status :success :user user :credential credential})))
           (.catch (fn [error]
-                    (js/console.log "Failed to link accounts" {:message (.-message error)}))))
-      (js/console.log "No current user logged in; cannot link accounts"))))
+                    (js/console.error "Failed to link accounts" {:message (.-message error)})
+                    (throw (js/Error. (.-message error))))))
+      (do
+        (js/console.log "No current user logged in; cannot link accounts")
+        (throw (js/Error. "No current user logged in"))))))  
+
+(defn unlink-a-user-account
+  [provider-id]
+  (let [auth-instance (.auth js/firebase)  ; Get the Firebase auth instance
+        current-user (.-currentUser auth-instance)]  ; Retrieve the currently signed-in user
+    (js/console.log "Firebase Auth Instance:" auth-instance)  ; Log the auth instance for debugging
+    (js/console.log "Current User:" current-user)  ; Log the current user for debugging
+    (js/console.log "Provider ID to Unlink:" provider-id)  ; Log the provider ID being passed
+
+    (if current-user
+      (-> (.unlink current-user provider-id)  ; Attempt to unlink the provider
+          (.then (fn []
+                   (js/console.log "Auth provider unlinked from account")  ; Log success message
+                   {:status :success :message "Provider unlinked successfully"}))
+          (.catch (fn [error]
+                    (js/console.error "Failed to unlink account:" (.-message error))  ; Log error message
+                    {:status :failure :message (.-message error)})))  ; Return error information
+      (do
+        (js/console.error "No current user logged in; cannot unlink accounts")  ; Log error if no user is signed in
+        {:status :failure :message "No current user logged in"}))))
 
 
 
-
-(defn handle-account-exists-different-credential [error]
-  (let [credential (.-credential error)
-        provider-id (.-providerId credential)]
-    (js/console.log "Handling account-exists-with-different-credential error"
-                    {:credential-email (if credential (.-email credential) "No credential available")
-                     :provider-id provider-id})
-    ;; Assuming there's a UI element or function to prompt user to sign in with the original provider
-    (if (contains? #{"google.com" "oidc.xero"} provider-id)
-      (js/console.log "Provider is Google , MSFT or Xero" {:provider-id provider-id})
-      (js/console.log "Provider not supported for linking" {:provider-id provider-id}))))
 
 
 (defn- oauth-sign-in
   [auth-provider opts]
-  (let [{:keys [sign-in-method scopes custom-parameters link-with-credential]
+  (let [{:keys [sign-in-method scopes custom-parameters]
          :or {sign-in-method :redirect}} opts]
-    (js/console.log "auth-provider" auth-provider)
-    (js/console.log "link-with-credential" link-with-credential)
+
     (doseq [scope scopes]
       (.addScope auth-provider scope))
+
     (when custom-parameters
       (.setCustomParameters auth-provider (clj->js custom-parameters)))
+
     (if-let [sign-in (sign-in-fns sign-in-method)]
-      (let [auth-instance (js/firebase.auth)]
-        (-> (sign-in auth-instance auth-provider)
-            (.then (fn [result]
-                     (js/console.log "Sign-in successful, result:" result)))
-            (.catch (fn [error]
-                      (js/console.log "Sign-in error" {:message (.-message error) :code (.-code error)})
-                      (if (= (.-code error) "auth/account-exists-with-different-credential")
-                        (handle-account-exists-different-credential error))
-                      (core/default-error-handler)))))
-      (js/console.error "Unsupported sign-in-method" sign-in-method))))
+      (-> (js/firebase.auth)
+          (sign-in auth-provider)
+          (.then (fn [result]
+                   {:status :success
+                    :result result}))
+          (.catch 
+           (fn [error]
+                    {:status :error
+                     :error error
+                     :message (.message error)
+                     :code (.-code error)}) 
+                  (core/default-error-handler)))
+      (>evt [(core/default-error-handler)
+             (js/Error. (str "Unsupported sign-in-method: " sign-in-method ". Either :redirect or :popup are supported."))]))))
 
 
 (defn google-sign-in
@@ -111,12 +129,16 @@
     (.addScope provider "email")
     (oauth-sign-in provider opts)))
 
-(defn link-xero-account
-  []
-  (let [provider (js/firebase.auth.OAuthProvider. "oidc.xero")]
-    (.addScope provider "profile")
-    (.addScope provider "email")
-    (link-account-directly provider)))
+(defn link-oauth-provider
+  [provider-id]
+  (let [provider (js/firebase.auth.OAuthProvider. provider-id)]
+    ;; Todo assuming diff providers will need diff scopes, may need to adjust accordingly
+    (link-a-user-account provider)))
+
+(defn unlink-oauth-provider
+  [provider-id]
+  (unlink-a-user-account provider-id))
+
 (defn facebook-sign-in
   [opts]
   (oauth-sign-in (js/firebase.auth.FacebookAuthProvider.) opts))
