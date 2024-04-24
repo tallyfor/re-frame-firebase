@@ -9,6 +9,7 @@
    [iron.re-utils :refer [>evt]]
    [firebase.app :as firebase-app]
    [firebase.auth :as firebase-auth]
+   [com.degel.re-frame-firebase.helpers :as helpers]
    [com.degel.re-frame-firebase.core :as core]))
 
 
@@ -49,49 +50,56 @@
    :redirect (memfn signInWithRedirect auth-provider)})
 
 (defn link-a-user-account [provider]
-  (let [auth-instance (.auth js/firebase)  ; Correct invocation of the auth method
-        current-user (.-currentUser auth-instance)]  ; Get the current user from the auth instance
+  (let [auth-instance (.auth js/firebase)  ; Get the Firebase auth instance
+        current-user (.-currentUser auth-instance)]  ; Retrieve the current user
+    
     (if current-user
       (-> (.linkWithPopup current-user provider)
           (.then (fn [result]
-                   (let [credential (.-credential result)
-                         user (.-user result)]
-                     (js/console.log "Accounts linked successfully" {:user user :credential credential})
-                     {:status :success :user user :credential credential})))
+                   (let [user (.-user result)
+                         user-data {:displayName (.-displayName user)
+                                    :email (.-email user)
+                                    :emailVerified (.-emailVerified user)
+                                    :uid (.-uid user)
+                                    :providerData (.-providerData user)}]
+                    ;;  (js/console.log "Accounts linked" {:user-id (.-uid user)})
+                     {:status :success :user user-data})))  ; Return success status and simplified user map
           (.catch (fn [error]
-                    (js/console.error "Failed to link accounts" {:message (.-message error)})
-                    (throw (js/Error. (.-message error))))))
+                    ;; (js/console.error "Linking error" {:error-msg (.-message error)})
+                    {:status :failure :error-msg (.-message error)})))  ; Return failure status and error message
       (do
-        (js/console.log "No current user logged in; cannot link accounts")
-        (throw (js/Error. "No current user logged in"))))))  
+        (js/console.error "No current user logged in")
+        {:status :failure :error-msg "No current user logged in"}))))
 
 (defn unlink-a-user-account
   [provider-id]
   (let [auth-instance (.auth js/firebase)  ; Get the Firebase auth instance
         current-user (.-currentUser auth-instance)]  ; Retrieve the currently signed-in user
-    (js/console.log "Firebase Auth Instance:" auth-instance)  ; Log the auth instance for debugging
-    (js/console.log "Current User:" current-user)  ; Log the current user for debugging
-    (js/console.log "Provider ID to Unlink:" provider-id)  ; Log the provider ID being passed
 
     (if current-user
       (-> (.unlink current-user provider-id)  ; Attempt to unlink the provider
           (.then (fn []
-                   (js/console.log "Auth provider unlinked from account")  ; Log success message
-                   {:status :success :message "Provider unlinked successfully"}))
+                  ;;  (js/console.log "Auth provider unlinked from account")  ; Log success message
+                   {:status :success :message "Provider unlinked successfully" :provider-id provider-id}))
           (.catch (fn [error]
-                    (js/console.error "Failed to unlink account:" (.-message error))  ; Log error message
+                    ;; (js/console.error "Failed to unlink account:" (.-message error))  ; Log error message
                     {:status :failure :message (.-message error)})))  ; Return error information
       (do
-        (js/console.error "No current user logged in; cannot unlink accounts")  ; Log error if no user is signed in
+        (js/console.error "No current user logged in; cannot unlink accounts")
         {:status :failure :message "No current user logged in"}))))
 
 
-
-
+(defn- maybe-link-with-credential
+  [pending-credential user-credential]
+  (when (and pending-credential user-credential)
+    (when-let [firebase-user (.-user user-credential)]
+      (-> firebase-user
+          (.linkWithCredential pending-credential)
+          (.catch (core/default-error-handler))))))
 
 (defn- oauth-sign-in
   [auth-provider opts]
-  (let [{:keys [sign-in-method scopes custom-parameters]
+  (let [{:keys [sign-in-method scopes custom-parameters link-with-credential]
          :or {sign-in-method :redirect}} opts]
 
     (doseq [scope scopes]
@@ -103,16 +111,8 @@
     (if-let [sign-in (sign-in-fns sign-in-method)]
       (-> (js/firebase.auth)
           (sign-in auth-provider)
-          (.then (fn [result]
-                   {:status :success
-                    :result result}))
-          (.catch 
-           (fn [error]
-                    {:status :error
-                     :error error
-                     :message (.message error)
-                     :code (.-code error)}) 
-                  (core/default-error-handler)))
+          (.then (partial maybe-link-with-credential link-with-credential))
+          (.catch (core/default-error-handler)))
       (>evt [(core/default-error-handler)
              (js/Error. (str "Unsupported sign-in-method: " sign-in-method ". Either :redirect or :popup are supported."))]))))
 
@@ -130,14 +130,23 @@
     (oauth-sign-in provider opts)))
 
 (defn link-oauth-provider
-  [provider-id]
-  (let [provider (js/firebase.auth.OAuthProvider. provider-id)]
-    ;; Todo assuming diff providers will need diff scopes, may need to adjust accordingly
-    (link-a-user-account provider)))
+  [options]
+  (if options
+    (let [{:keys [provider-id on-success on-failure]} options
+          provider (if provider-id
+                     (js/firebase.auth.OAuthProvider. provider-id)
+                     (throw (js/Error. "Provider ID is required")))
+          link-promise (link-a-user-account provider)]
+      (helpers/promise-wrapper link-promise on-success on-failure))
+    (throw (js/Error. "Options map cannot be nil"))))
 
 (defn unlink-oauth-provider
-  [provider-id]
-  (unlink-a-user-account provider-id))
+  [options]
+  (if options
+    (let [{:keys [provider-id on-success on-failure]} options
+          unlink-promise (unlink-a-user-account provider-id)]
+      (helpers/promise-wrapper unlink-promise on-success on-failure))
+    (throw (js/Error. "Options map cannot be nil"))))
 
 (defn facebook-sign-in
   [opts]
