@@ -1,3 +1,5 @@
+# Custom directories and files
+bin/
 *#
 *jar
 *~
@@ -17,7 +19,13 @@
 checkouts/
 pom.xml
 
+# Firebase config file
 .firebaserc
 
 # MacOS system file
 .DS_Store
+
+# Clj-kondo
+*.clj-kondo
+*.lsp
+

@@ -9,6 +9,7 @@
    [iron.re-utils :refer [>evt]]
    [firebase.app :as firebase-app]
    [firebase.auth :as firebase-auth]
+   [com.degel.re-frame-firebase.helpers :as helpers]
    [com.degel.re-frame-firebase.core :as core]))
 
 
@@ -48,6 +49,46 @@
   {:popup (memfn signInWithPopup auth-provider)
    :redirect (memfn signInWithRedirect auth-provider)})
 
+(defn link-a-user-account [provider]
+  (let [auth-instance (.auth js/firebase)  ; Get the Firebase auth instance
+        current-user (.-currentUser auth-instance)]  ; Retrieve the current user
+    
+    (if current-user
+      (-> (.linkWithPopup current-user provider)
+          (.then (fn [result]
+                   (let [user (.-user result)
+                         user-data {:displayName (.-displayName user)
+                                    :email (.-email user)
+                                    :emailVerified (.-emailVerified user)
+                                    :uid (.-uid user)
+                                    :providerData (.-providerData user)}]
+                    ;;  (js/console.log "Accounts linked" {:user-id (.-uid user)})
+                     {:status :success :user user-data})))  ; Return success status and simplified user map
+          (.catch (fn [error]
+                    ;; (js/console.error "Linking error" {:error-msg (.-message error)})
+                    {:status :failure :error-msg (.-message error)})))  ; Return failure status and error message
+      (do
+        (js/console.error "No current user logged in")
+        {:status :failure :error-msg "No current user logged in"}))))
+
+(defn unlink-a-user-account
+  [provider-id]
+  (let [auth-instance (.auth js/firebase)  ; Get the Firebase auth instance
+        current-user (.-currentUser auth-instance)]  ; Retrieve the currently signed-in user
+
+    (if current-user
+      (-> (.unlink current-user provider-id)  ; Attempt to unlink the provider
+          (.then (fn []
+                  ;;  (js/console.log "Auth provider unlinked from account")  ; Log success message
+                   {:status :success :message "Provider unlinked successfully" :provider-id provider-id}))
+          (.catch (fn [error]
+                    ;; (js/console.error "Failed to unlink account:" (.-message error))  ; Log error message
+                    {:status :failure :message (.-message error)})))  ; Return error information
+      (do
+        (js/console.error "No current user logged in; cannot unlink accounts")
+        {:status :failure :message "No current user logged in"}))))
+
+
 (defn- maybe-link-with-credential
   [pending-credential user-credential]
   (when (and pending-credential user-credential)
@@ -75,11 +116,37 @@
       (>evt [(core/default-error-handler)
              (js/Error. (str "Unsupported sign-in-method: " sign-in-method ". Either :redirect or :popup are supported."))]))))
 
+
 (defn google-sign-in
   [opts]
-  ;; TODO: use Credential for mobile.
+  ;; TODO: use Credential for mobile. 
   (oauth-sign-in (js/firebase.auth.GoogleAuthProvider.) opts))
 
+(defn ocid-xero-sign-in
+  [opts]
+  (let [provider (js/firebase.auth.OAuthProvider. "oidc.xero")]
+    (.addScope provider "profile")
+    (.addScope provider "email")
+    (oauth-sign-in provider opts)))
+
+(defn link-oauth-provider
+  [options]
+  (if options
+    (let [{:keys [provider-id on-success on-failure]} options
+          provider (if provider-id
+                     (js/firebase.auth.OAuthProvider. provider-id)
+                     (throw (js/Error. "Provider ID is required")))
+          link-promise (link-a-user-account provider)]
+      (helpers/promise-wrapper link-promise on-success on-failure))
+    (throw (js/Error. "Options map cannot be nil"))))
+
+(defn unlink-oauth-provider
+  [options]
+  (if options
+    (let [{:keys [provider-id on-success on-failure]} options
+          unlink-promise (unlink-a-user-account provider-id)]
+      (helpers/promise-wrapper unlink-promise on-success on-failure))
+    (throw (js/Error. "Options map cannot be nil"))))
 
 (defn facebook-sign-in
   [opts]
@@ -99,8 +166,6 @@
 (defn microsoft-sign-in
   [opts]
   (oauth-sign-in (js/firebase.auth.OAuthProvider. "microsoft.com") opts))
-
-
 
 (defn email-sign-in [{:keys [email password]}]
   (-> (js/firebase.auth)

@@ -150,6 +150,9 @@
 (re-frame/reg-fx :firebase/twitter-sign-in   auth/twitter-sign-in)
 (re-frame/reg-fx :firebase/github-sign-in    auth/github-sign-in)
 (re-frame/reg-fx :firebase/microsoft-sign-in auth/microsoft-sign-in)
+(re-frame/reg-fx :firebase/ocid-xero-sign-in auth/ocid-xero-sign-in)
+(re-frame/reg-fx :firebase/link-oauth-provider auth/link-oauth-provider)
+(re-frame/reg-fx :firebase/unlink-oauth-provider auth/unlink-oauth-provider)
 
 
 ;;; Login to firebase using email/password authentication
