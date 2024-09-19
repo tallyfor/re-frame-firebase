@@ -153,6 +153,7 @@
 (re-frame/reg-fx :firebase/ocid-xero-sign-in auth/ocid-xero-sign-in)
 (re-frame/reg-fx :firebase/link-oauth-provider auth/link-oauth-provider)
 (re-frame/reg-fx :firebase/unlink-oauth-provider auth/unlink-oauth-provider)
+(re-frame/reg-fx :firebase/handle-redirect-result auth/handle-redirect-result)
 
 
 ;;; Login to firebase using email/password authentication

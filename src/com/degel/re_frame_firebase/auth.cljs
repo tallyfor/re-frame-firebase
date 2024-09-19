@@ -31,7 +31,7 @@
       (user)
       (core/set-current-user)))
 
-(defn- init-auth []
+(defn init-auth []
   (.onAuthStateChanged
    (js/firebase.auth)
    set-user
@@ -40,6 +40,7 @@
   (-> (js/firebase.auth)
       (.getRedirectResult)
       (.then (fn on-user-credential [user-credential]
+               (js/console.log "Redirect result" user-credential)
                (-> user-credential
                    (.-user)
                    set-user)))
@@ -101,21 +102,55 @@
   [auth-provider opts]
   (let [{:keys [sign-in-method scopes custom-parameters link-with-credential]
          :or {sign-in-method :redirect}} opts]
-
+    (js/console.log "sign-in-method" sign-in-method)
     (doseq [scope scopes]
       (.addScope auth-provider scope))
 
     (when custom-parameters
       (.setCustomParameters auth-provider (clj->js custom-parameters)))
 
-    (if-let [sign-in (sign-in-fns sign-in-method)]
-      (-> (js/firebase.auth)
-          (sign-in auth-provider)
-          (.then (partial maybe-link-with-credential link-with-credential))
-          (.catch (core/default-error-handler)))
-      (>evt [(core/default-error-handler)
-             (js/Error. (str "Unsupported sign-in-method: " sign-in-method ". Either :redirect or :popup are supported."))]))))
+(if-let [sign-in (sign-in-fns sign-in-method)]
+  (do
+    (js/console.log "Initiating sign-in method:" sign-in-method)
+    (-> (js/firebase.auth)
+        (sign-in auth-provider)
+        ;; Add logging for result of sign-in
+        (.then (fn [result]
+                 (js/console.log "Sign-in result:" result)
+                 (partial maybe-link-with-credential link-with-credential result)))
+        ;; Log any errors that occur during the sign-in process
+        (.catch (fn [error]
+                  (js/console.error "Sign-in error:" error)
+                  (core/default-error-handler)))))
+  ;; Handle unsupported sign-in method
+  (>evt [(core/default-error-handler)
+         (js/Error. (str "Unsupported sign-in-method: " sign-in-method ". Either :redirect or :popup are supported."))]))
+    ))
 
+(defn handle-redirect-result
+  [{:keys [on-success on-fail]}]
+  (-> (js/firebase.auth)
+      (.getRedirectResult)
+      (.then (fn [result]
+               (js/console.log "Full Redirect Result:" result)
+               (js/console.log "Credential:" (.-credential result))
+               (js/console.log "Operation Type:" (.-operationType result))
+               (js/console.log "Additional User Info:" (.-additionalUserInfo result))
+               (let [user (.-user result)]
+                 (if user
+                   (do
+                     (js/console.log "User found in redirect result" user)
+                     (when on-success
+                       (on-success user)))
+                   (do
+                     (js/console.log "No user found in redirect result")
+                     (when on-fail
+                       (on-fail "No user found")))))))
+
+      (.catch (fn [error]
+                (js/console.error "Error during redirect handling" error)
+                (when on-fail
+                  (on-fail error))))))
 
 (defn google-sign-in
   [opts]
@@ -124,6 +159,7 @@
 
 (defn ocid-xero-sign-in
   [opts]
+  (js/console.log "opts" opts)
   (let [provider (js/firebase.auth.OAuthProvider. "oidc.xero")]
     (.addScope provider "profile")
     (.addScope provider "email")
