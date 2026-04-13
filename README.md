@@ -1,3 +1,5 @@
+> **Archived.** This repo has been migrated into the [tallyfor/balance](https://github.com/tallyfor/balance) monorepo at [`components/re-frame-firebase`](https://github.com/tallyfor/balance/tree/main/components/re-frame-firebase). All future development happens there.
+
 # re-frame-firebase
 
 [Re-frame](https://github.com/Day8/re-frame) wrapper around Google's
